@@ -1,44 +1,92 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
-// Ensure db directory exists
-const dbDir = path.resolve(__dirname);
-if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+// ----- PERSISTENCE LOGIC (reports.txt) -----
+// Storing data in a simple JSON file within the db/ folder
+const dbPath = path.join(__dirname, 'reports.txt');
+
+// Initialize txt file if it doesn't exist
+if (!fs.existsSync(dbPath)) {
+    fs.writeFileSync(dbPath, JSON.stringify([]), 'utf-8');
 }
 
-// Connect to database
-const dbPath = path.join(__dirname, 'reports.sqlite');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database', err.message);
-    } else {
-        console.log('Connected to the SQLite database.');
-        // Create reports table
-        db.run(`CREATE TABLE IF NOT EXISTS reports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            description TEXT,
-            category TEXT NOT NULL,
-            latitude REAL,
-            longitude REAL,
-            address TEXT,
-            image_url TEXT,
-            status TEXT DEFAULT 'Reported',
-            solution TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`, (err) => {
-            if (err) {
-                console.error('Error creating table', err.message);
-            } else {
-                // Gracefully attempt to add the solution column to old databases
-                db.run(`ALTER TABLE reports ADD COLUMN solution TEXT`, (alterErr) => {
-                    // Ignore errors like "duplicate column name" if it already exists
-                });
-            }
-        });
+const readData = () => {
+    try {
+        const data = fs.readFileSync(dbPath, 'utf-8');
+        return data ? JSON.parse(data) : [];
+    } catch (err) {
+        console.error('Error reading from reports.txt:', err.message);
+        return [];
     }
-});
+};
+
+const writeData = (data) => {
+    try {
+        fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+        console.error('Error writing to reports.txt:', err.message);
+    }
+};
+
+// Simplified API to match common database method names for easy integration
+const db = {
+    all: (query, params, callback) => {
+        // Simple simulation of 'SELECT * FROM reports'
+        let records = readData();
+        
+        // Very basic query filtering simulation
+        if (params && params.length > 0) {
+            // This is a minimal mock for the specific queries used in the app
+            if (params.length === 2) { // category and status
+                records = records.filter(r => r.category === params[0] && r.status === params[1]);
+            } else {
+                records = records.filter(r => r.category === params[0] || r.status === params[0]);
+            }
+        }
+        
+        callback(null, records);
+    },
+    run: (query, params, callback) => {
+        const records = readData();
+        
+        if (query.includes('INSERT INTO')) {
+            const newId = records.length > 0 ? Math.max(...records.map(r => r.id)) + 1 : 1;
+            const newRecord = {
+                id: newId,
+                title: params[0],
+                description: params[1],
+                category: params[2],
+                latitude: params[3],
+                longitude: params[4],
+                address: params[5],
+                image_url: params[6],
+                status: 'Reported',
+                solution: null,
+                created_at: new Date().toISOString()
+            };
+            records.push(newRecord);
+            writeData(records);
+            callback.call({ lastID: newId }, null);
+        } else if (query.includes('UPDATE')) {
+            const status = params[0];
+            const id = params[params.length - 1];
+            const index = records.findIndex(r => r.id == id);
+            if (index !== -1) {
+                records[index].status = status;
+                if (params.length === 3) records[index].solution = params[1];
+                writeData(records);
+                callback.call({ changes: 1 }, null);
+            } else {
+                callback.call({ changes: 0 }, null);
+            }
+        } else if (query.includes('DELETE')) {
+            const id = params[0];
+            const initialLength = records.length;
+            const filtered = records.filter(r => r.id != id);
+            writeData(filtered);
+            callback.call({ changes: initialLength - filtered.length }, null);
+        }
+    }
+};
 
 module.exports = db;
