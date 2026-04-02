@@ -101,10 +101,11 @@ async function handleFormSubmit(e) {
 
     try {
         const formData = new FormData(form);
-        
+
+        // Send as multipart/form-data so the server (multer) can receive the image file
         const response = await fetch(API_URL, {
             method: 'POST',
-            body: formData
+            body: formData   // DO NOT set Content-Type header; browser sets it with boundary automatically
         });
 
         const data = await response.json();

@@ -2,12 +2,33 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ----- FILE UPLOAD SETUP -----
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, uploadDir),
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, `image-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+    }
+});
+const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) cb(null, true);
+        else cb(new Error('Only image files are allowed'));
+    }
+});
+
 // ----- PERSISTENCE LOGIC -----
-const dbPath = path.join(__dirname, 'reports.txt');
+const dbPath = path.join(__dirname, 'db', 'reports.txt');
 
 if (!fs.existsSync(dbPath)) {
     fs.writeFileSync(dbPath, JSON.stringify([]), 'utf-8');
@@ -38,6 +59,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve frontend
 app.use(express.static(path.join(__dirname, '../frontend')));
+// Serve uploaded images
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ----- API -----
 app.get('/api/reports', (req, res) => {
@@ -49,9 +72,18 @@ app.get('/api/reports', (req, res) => {
     res.json({ data: records });
 });
 
-app.post('/api/reports', (req, res) => {
+app.post('/api/reports', upload.single('image'), (req, res) => {
+    if (!req.body) return res.status(400).json({ error: 'Request body is missing' });
     const { title, description, category, latitude, longitude, address, image_url } = req.body;
     if (!title || !category) return res.status(400).json({ error: 'Missing title/category' });
+
+    // Prefer uploaded file; fall back to image_url text field
+    let finalImageUrl = null;
+    if (req.file) {
+        finalImageUrl = `/uploads/${req.file.filename}`;
+    } else if (image_url && image_url.trim()) {
+        finalImageUrl = image_url.trim();
+    }
 
     const records = readData();
     const newId = records.length > 0 ? Math.max(...records.map(r => r.id)) + 1 : 1;
@@ -63,7 +95,7 @@ app.post('/api/reports', (req, res) => {
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
         address: address || null,
-        image_url: image_url || null,
+        image_url: finalImageUrl,
         status: 'Reported',
         solution: null,
         created_at: new Date().toISOString()
@@ -85,6 +117,7 @@ app.patch('/api/reports/:id/status', (req, res) => {
     res.json({ message: 'Updated' });
 });
 
+// NOTE: /stats MUST be before /:id so Express doesn't treat 'stats' as an id param
 app.get('/api/reports/stats', (req, res) => {
     const records = readData();
     const statsObj = records.reduce((acc, r) => {

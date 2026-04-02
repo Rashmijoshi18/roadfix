@@ -56,8 +56,9 @@ function renderReports(reports) {
         const card = document.createElement('div');
         card.className = 'report-card';
         
-        // Use Image URL or Placeholder
-        const imageUrl = report.image_url || 'https://via.placeholder.com/400x200?text=No+Image+Provided';
+        // Use Image URL or inline SVG placeholder (no external dependency)
+        const PLACEHOLDER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200'%3E%3Crect width='400' height='200' fill='%23e2e8f0'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%2394a3b8'%3ENo Image Provided%3C/text%3E%3C/svg%3E`;
+        const imageUrl = report.image_url || PLACEHOLDER;
 
         const dateStr = new Date(report.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -67,7 +68,7 @@ function renderReports(reports) {
 
         card.innerHTML = `
             <div class="report-img-wrapper">
-                <img src="${imageUrl}" alt="Report Image" class="report-img" onerror="this.src='https://via.placeholder.com/400x200?text=Image+Load+Error'">
+                <img src="${imageUrl}" alt="Report Image" class="report-img" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'200\'%3E%3Crect width=\'400\' height=\'200\' fill=\'%23fef2f2\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'sans-serif\' font-size=\'13\' fill=\'%23f87171\'%3EImage failed to load%3C/text%3E%3C/svg%3E'">
                 <div class="badge-position">
                     <span class="badge ${badgeClass}">${report.status}</span>
                 </div>
